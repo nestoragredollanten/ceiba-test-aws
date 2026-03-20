@@ -7,7 +7,7 @@
   },
   "item": [
     {
-      "name": "New Request",
+      "name": "Funds",
       "request": {
         "auth": {
           "type": "basic",
@@ -27,14 +27,10 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/funds",
+          "raw": "http://<ENDPOINT-AWS>/api/v1/funds",
           "protocol": "http",
           "host": [
-            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
-            "elb",
-            "us-east-1",
-            "amazonaws",
-            "com"
+            "<ENDPOINT-AWS>"
           ],
           "path": [
             "api",
@@ -75,14 +71,10 @@
           }
         },
         "url": {
-          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/subscriptions",
+          "raw": "http://<ENDPOINT-AWS>/api/v1/subscriptions",
           "protocol": "http",
           "host": [
-            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
-            "elb",
-            "us-east-1",
-            "amazonaws",
-            "com"
+            "<ENDPOINT-AWS>"
           ],
           "path": [
             "api",
@@ -114,14 +106,10 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/customers/cliente-001/transactions",
+          "raw": "http://<ENDPOINT-AWS>/api/v1/customers/cliente-001/transactions",
           "protocol": "http",
           "host": [
-            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
-            "elb",
-            "us-east-1",
-            "amazonaws",
-            "com"
+            "<ENDPOINT-AWS>"
           ],
           "path": [
             "api",
@@ -155,14 +143,10 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/customers/cliente-001/balance",
+          "raw": "http://<ENDPOINT-AWS>/api/v1/customers/cliente-001/balance",
           "protocol": "http",
           "host": [
-            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
-            "elb",
-            "us-east-1",
-            "amazonaws",
-            "com"
+            "<ENDPOINT-AWS>"
           ],
           "path": [
             "api",
