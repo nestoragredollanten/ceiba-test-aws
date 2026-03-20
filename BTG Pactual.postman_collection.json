@@ -1,0 +1,179 @@
+{
+  "info": {
+    "_postman_id": "2b0da967-5a87-40e5-9a34-8e3a1925c2e1",
+    "name": "BTG Pactual",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "3062800"
+  },
+  "item": [
+    {
+      "name": "New Request",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin123",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/funds",
+          "protocol": "http",
+          "host": [
+            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
+            "elb",
+            "us-east-1",
+            "amazonaws",
+            "com"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "funds"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Subscriptions",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "cliente",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "cliente123",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"customerId\": \"cliente-001\",\r\n  \"fundId\": 1,\r\n  \"amount\": 75000,\r\n  \"notificationChannel\": \"SMS\",\r\n  \"destination\": \"+573146434524\"\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/subscriptions",
+          "protocol": "http",
+          "host": [
+            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
+            "elb",
+            "us-east-1",
+            "amazonaws",
+            "com"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "subscriptions"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "getHistory",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "cliente123",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "cliente",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/customers/cliente-001/transactions",
+          "protocol": "http",
+          "host": [
+            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
+            "elb",
+            "us-east-1",
+            "amazonaws",
+            "com"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers",
+            "cliente-001",
+            "transactions"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "getBalance",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "cliente123",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "cliente",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd.elb.us-east-1.amazonaws.com/api/v1/customers/cliente-001/balance",
+          "protocol": "http",
+          "host": [
+            "a3a1820c32a024d6aa12c103487b2a83-fa0b23e19c704efd",
+            "elb",
+            "us-east-1",
+            "amazonaws",
+            "com"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers",
+            "cliente-001",
+            "balance"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
