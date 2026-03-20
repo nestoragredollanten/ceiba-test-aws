@@ -1,0 +1,474 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Stack unificado de infraestructura para la API BTG Pactual Fondos.
+  Crea todos los recursos AWS necesarios: ECR, DynamoDB, SNS, IAM y el
+  cluster EKS con su node group. El despliegue de la aplicacion se
+  gestiona con los manifiestos Kubernetes en infra/k8s/.
+
+# ==============================================================
+# PARAMETROS
+# ==============================================================
+Parameters:
+
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Ambiente de despliegue (afecta los nombres de todos los recursos)
+
+  ClusterName:
+    Type: String
+    Default: btg-funds-eks
+    Description: Nombre del cluster EKS
+
+  KubernetesVersion:
+    Type: String
+    Default: '1.30'
+    Description: Version de Kubernetes del cluster EKS
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID de la VPC donde se desplegara el cluster EKS
+
+  EksControlPlaneSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets para el control plane EKS (solo AZs soportadas en la region)
+
+  NodeGroupSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets para los nodos del EKS Node Group (pueden diferir de control plane)
+
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+    Description: Tipo de instancia EC2 para los nodos del cluster
+
+  NodeDesiredSize:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: Numero deseado de nodos en el node group
+
+  NodeMinSize:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: Numero minimo de nodos en el node group
+
+  NodeMaxSize:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    Description: Numero maximo de nodos en el node group
+
+# ==============================================================
+# RECURSOS
+# ==============================================================
+Resources:
+
+  # ------------------------------------------------------------
+  # ECR - Repositorio de imagen Docker
+  # ------------------------------------------------------------
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: btg-funds-api
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Mantener solo las ultimas 10 imagenes sin tag",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # DynamoDB - Cuenta del cliente (saldo disponible)
+  # ------------------------------------------------------------
+  CustomerAccountTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub customer_account_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: customerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: customerId
+          KeyType: HASH
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # DynamoDB - Suscripciones activas a fondos
+  # ------------------------------------------------------------
+  SubscriptionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub subscription_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: subscriptionId
+          AttributeType: S
+        - AttributeName: customerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: subscriptionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: byCustomer
+          KeySchema:
+            - AttributeName: customerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # DynamoDB - Historial de transacciones (aperturas y cancelaciones)
+  # ------------------------------------------------------------
+  TransactionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub transaction_${Environment}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: customerId
+          AttributeType: S
+        - AttributeName: createdAtTransactionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: customerId
+          KeyType: HASH
+        - AttributeName: createdAtTransactionId
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # SNS - Topic de notificaciones (email / SMS)
+  # ------------------------------------------------------------
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub btg-funds-notifications-${Environment}
+      DisplayName: BTG Pactual Fondos Notificaciones
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # IAM - Rol del Control Plane del cluster EKS
+  # ------------------------------------------------------------
+  EksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub btg-funds-eks-cluster-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # IAM - Rol de los Nodos EC2 del cluster
+  #       Incluye acceso directo a DynamoDB y SNS usando !GetAtt / !Ref
+  # ------------------------------------------------------------
+  EksNodeRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - CustomerAccountTable
+      - SubscriptionTable
+      - TransactionTable
+      - NotificationTopic
+    Properties:
+      RoleName: !Sub btg-funds-eks-node-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt CustomerAccountTable.Arn
+                  - !GetAtt SubscriptionTable.Arn
+                  - !Sub ${SubscriptionTable.Arn}/index/*
+                  - !GetAtt TransactionTable.Arn
+        - PolicyName: SNSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:Subscribe
+                Resource:
+                  - !Ref NotificationTopic
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # IAM - Politica gestionada para IRSA (IAM Roles for Service Accounts)
+  #       Permite a los pods EKS asumir un rol IAM sin credenciales estaticas
+  # ------------------------------------------------------------
+  AppIrsaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn:
+      - CustomerAccountTable
+      - SubscriptionTable
+      - TransactionTable
+      - NotificationTopic
+    Properties:
+      ManagedPolicyName: !Sub btg-funds-app-policy-${Environment}
+      Description: Politica para pods EKS — acceso a DynamoDB y SNS via IRSA
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DynamoDBAccess
+            Effect: Allow
+            Action:
+              - dynamodb:PutItem
+              - dynamodb:GetItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+            Resource:
+              - !GetAtt CustomerAccountTable.Arn
+              - !GetAtt SubscriptionTable.Arn
+              - !Sub ${SubscriptionTable.Arn}/index/*
+              - !GetAtt TransactionTable.Arn
+          - Sid: SNSAccess
+            Effect: Allow
+            Action:
+              - sns:Publish
+              - sns:Subscribe
+            Resource:
+              - !Ref NotificationTopic
+
+  # ------------------------------------------------------------
+  # Network - Security Group del Cluster EKS
+  # ------------------------------------------------------------
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub Security group para cluster EKS ${ClusterName}-${Environment}
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS para kubectl y API server EKS
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Trafico de salida irrestricto
+      Tags:
+        - Key: Name
+          Value: !Sub ${ClusterName}-sg-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # EKS - Cluster
+  # ------------------------------------------------------------
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    DependsOn:
+      - EksClusterRole
+      - ClusterSecurityGroup
+    Properties:
+      Name: !Sub ${ClusterName}-${Environment}
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt EksClusterRole.Arn
+      AccessConfig:
+        AuthenticationMode: API_AND_CONFIG_MAP
+        BootstrapClusterCreatorAdminPermissions: true
+      ResourcesVpcConfig:
+        SubnetIds: !Ref EksControlPlaneSubnetIds
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: true
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: btg-funds
+
+  # ------------------------------------------------------------
+  # EKS - Node Group (workers donde corren los pods)
+  # ------------------------------------------------------------
+  EksNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn:
+      - EksCluster
+      - EksNodeRole
+    Properties:
+      ClusterName: !Ref EksCluster
+      NodegroupName: !Sub btg-funds-nodes-${Environment}
+      NodeRole: !GetAtt EksNodeRole.Arn
+      Subnets: !Ref NodeGroupSubnetIds
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      ScalingConfig:
+        DesiredSize: !Ref NodeDesiredSize
+        MinSize: !Ref NodeMinSize
+        MaxSize: !Ref NodeMaxSize
+      UpdateConfig:
+        MaxUnavailable: 1
+      Labels:
+        environment: !Ref Environment
+        project: btg-funds
+      Tags:
+        Environment: !Ref Environment
+        Project: btg-funds
+
+# ==============================================================
+# OUTPUTS
+# ==============================================================
+Outputs:
+
+  # --- ECR ---
+  EcrRepositoryUri:
+    Description: URI del repositorio ECR — usar en deployment.yaml y en el pipeline CI/CD
+    Value: !GetAtt EcrRepository.RepositoryUri
+    Export:
+      Name: !Sub btg-funds-ecr-uri-${Environment}
+
+  # --- DynamoDB ---
+  CustomerAccountTableName:
+    Description: Nombre de la tabla DynamoDB de cuentas de clientes
+    Value: !Ref CustomerAccountTable
+    Export:
+      Name: !Sub btg-funds-customer-table-${Environment}
+
+  SubscriptionTableName:
+    Description: Nombre de la tabla DynamoDB de suscripciones activas
+    Value: !Ref SubscriptionTable
+    Export:
+      Name: !Sub btg-funds-subscription-table-${Environment}
+
+  TransactionTableName:
+    Description: Nombre de la tabla DynamoDB de historial de transacciones
+    Value: !Ref TransactionTable
+    Export:
+      Name: !Sub btg-funds-transaction-table-${Environment}
+
+  # --- SNS ---
+  NotificationTopicArn:
+    Description: ARN del topic SNS para notificaciones — usar en configmap.yaml
+    Value: !Ref NotificationTopic
+    Export:
+      Name: !Sub btg-funds-sns-topic-${Environment}
+
+  # --- IAM ---
+  AppIrsaPolicyArn:
+    Description: ARN de la politica IAM para IRSA — asociar al ServiceAccount de K8s
+    Value: !Ref AppIrsaPolicy
+    Export:
+      Name: !Sub btg-funds-app-policy-arn-${Environment}
+
+  NodeRoleArn:
+    Description: ARN del rol IAM de los nodos EKS
+    Value: !GetAtt EksNodeRole.Arn
+    Export:
+      Name: !Sub btg-funds-node-role-arn-${Environment}
+
+  # --- EKS ---
+  ClusterName:
+    Description: Nombre del cluster EKS
+    Value: !Ref EksCluster
+    Export:
+      Name: !Sub btg-funds-eks-cluster-${Environment}
+
+  ClusterArn:
+    Description: ARN del cluster EKS
+    Value: !GetAtt EksCluster.Arn
+
+  ClusterEndpoint:
+    Description: Endpoint HTTPS del API Server de EKS
+    Value: !GetAtt EksCluster.Endpoint
+
+  KubeconfigCommand:
+    Description: Comando para configurar kubectl apuntando al cluster
+    Value: !Sub aws eks update-kubeconfig --region ${AWS::Region} --name ${EksCluster}
+

@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ceiba-test-api
+  namespace: ceiba-test
+  labels:
+    app: ceiba-test-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ceiba-test-api
+  template:
+    metadata:
+      labels:
+        app: ceiba-test-api
+    spec:
+      serviceAccountName: btg-funds-sa
+      containers:
+        - name: ceiba-test-api
+          image: <ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/btg-funds-api:<IMAGE_TAG>
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: dynamodb
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: btg-funds-config
+                  key: aws.region
+            - name: DYNAMODB_TABLE_CUSTOMER
+              valueFrom:
+                configMapKeyRef:
+                  name: btg-funds-config
+                  key: dynamodb.table.customer
+            - name: DYNAMODB_TABLE_SUBSCRIPTION
+              valueFrom:
+                configMapKeyRef:
+                  name: btg-funds-config
+                  key: dynamodb.table.subscription
+            - name: DYNAMODB_TABLE_TRANSACTION
+              valueFrom:
+                configMapKeyRef:
+                  name: btg-funds-config
+                  key: dynamodb.table.transaction
+            - name: SNS_TOPIC_ARN
+              valueFrom:
+                configMapKeyRef:
+                  name: btg-funds-config
+                  key: sns.topic.arn
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 18
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      terminationGracePeriodSeconds: 30

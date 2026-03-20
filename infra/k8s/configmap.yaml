@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: btg-funds-config
+  namespace: ceiba-test
+data:
+  # Reemplazar con la region AWS donde se desplegaron los stacks
+  aws.region: "us-east-1"
+
+  # Nombres de las tablas DynamoDB (deben coincidir con Environment del stack subscription-api.yaml)
+  dynamodb.table.customer: "customer_account_prod"
+  dynamodb.table.subscription: "subscription_prod"
+  dynamodb.table.transaction: "transaction_prod"
+
+  # ARN del topic SNS (obtenido del Output NotificationTopicArn del stack CloudFormation)
+  sns.topic.arn: "arn:aws:sns:<AWS_REGION>:<ACCOUNT_ID>:<SNS_TOPIC_NAME>"
+
